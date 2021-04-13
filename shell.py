@@ -4,7 +4,8 @@ while True:
     text = input('basic > ')
     #print(text)
 
-    result, error = basic.run(text)
+    # FileName ve text parametre
+    result, error = basic.run('<stdin>', text)
     print(result)
     if error: print(error.as_string())
     else: print(result)

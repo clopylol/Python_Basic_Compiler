@@ -6,21 +6,53 @@
 DIGITS = '0123456789'
 
 ###################################################
-################# H A T A L A R #################
+################# H A T A L A R ###################
 ###################################################
 
 class Error: 
-    def __init__(self, error_name, error_details):
+    def __init__(self, position_start, position_end, error_name, error_details):
+        self.position_start = position_start
+        self.position_end = position_end
         self.error_name = error_name
         self.error_details = error_details
 
     def as_string(self):
         result = f'{self.error_name}: {self.error_details}'
+        result += f'Dosya: {self.position_start.fileName}, Satır: {self.position_start.line + 1}'
         return result
 
 class IllegalCharError(Error):
-    def __init__(self, error_details):
-        super().__init__('Illegal Character', error_details)
+    def __init__(self, position_start, position_end, error_details):
+        super().__init__(position_start, position_end, 'Geçersiz Karakter', error_details)
+        
+
+###################################################
+################# P O S I T I O N #################
+#Convert = idx, ln, col
+###################################################
+
+class Position(object):
+    def __init__(self, index, line, column, fileName, fileText):
+        self.index = index
+        self.line = line
+        self.column = column
+        self.fileName = fileName
+        self.fileText = fileText
+
+    # Satır İçerisinde ilerlemek için kullanacağız.
+    def advance(self, current_char):
+        self.index += 1
+        self.column +=1
+
+        if current_char == '\n':
+            self.line +=1
+            self.column = 0
+
+        return self
+
+    # Kullanıcıya hangi dosyanın hangi text'i içerisinde hangi satırda hatanın olduğunu gösterebileceğiz.
+    def copy(self):
+       return Position(self.index, self.line, self.column, self.fileName, self.fileText)
         
 
 ###################################################
@@ -58,9 +90,10 @@ class Token:
 ###################################################
 
 class Lexer:
-    def __init__(self, text):
+    def __init__(self, fileName, text):
+        self.fileName = fileName
         self.text = text
-        self.pos = -1
+        self.pos = Position(-1, 0, -1, fileName, text)
         self.current_char = None
         self.advance()
 
@@ -68,8 +101,8 @@ class Lexer:
     def advance(self):
         # else durumuna düştüğümüzde satırın sonun gelmişiz demektir.
         # Girilen text içerisinde, text uzunluğu kadar gezeceğiz.
-        self.pos += 1 
-        self.current_char = self.text[self.pos] if self.pos < len(self.text) else None
+        self.pos.advance(self.current_char) 
+        self.current_char = self.text[self.pos.index] if self.pos.index < len(self.text) else None
 
 
     def make_numbers(self):
@@ -131,9 +164,10 @@ class Lexer:
 
             # Eğer tanımlı olan karakterlerden hiç biri gelmediyse hata dönmemiz gerekiyor.
             else: 
+                position_start = self.pos.copy()
                 char = self.current_char
                 self.advance()
-                return [], IllegalCharError ("'" + char + "'")
+                return [], IllegalCharError (position_start, self.pos,"'" + char + "'")
 
         return tokens, None
 
@@ -142,8 +176,8 @@ class Lexer:
 ################# Ç A L I Ş T I R #################
 ###################################################
 
-def run(text):
-    lexer = Lexer(text)
+def run(fileName,text):
+    lexer = Lexer(fileName, text)
     tokens, error = lexer.make_tokens()
 
     return tokens, error
