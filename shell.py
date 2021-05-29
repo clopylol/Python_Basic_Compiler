@@ -1,7 +1,7 @@
 import basic
 
 while True:
-    text = input('basic > ')
+    text = input('test > ')
     #print(text)
 
     # FileName ve text parametre
