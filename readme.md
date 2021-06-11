@@ -26,7 +26,7 @@ Eşitlik Kontrolü:
 
     5 == 5 ... True
 
-İf Kullanımı: 
+If Kullanımı: 
 
     IF 5 < 10 THEN 123
 
