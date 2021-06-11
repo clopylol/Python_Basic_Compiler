@@ -102,10 +102,10 @@ class Position:
     def copy(self):
         return Position(self.idx, self.ln, self.col, self.fn, self.ftxt)
 
+
 ###################################################
 ################# T O K E N L A R #################
 ###################################################
-
 
 # Değişken Tipi
 TT_INT = 'TT_INT'  # int tipi
@@ -146,8 +146,13 @@ KEYWORDS = [
     'VAR'
     'AND',  # Ve
     'OR',  # Veya
-    'NOT'  # Değil
+    'NOT',  # Değil
+    'IF',  # Eğer
+    'THEN',  # Öyleyse
+    'ELIF',  # Değil ise
+    'ELSE'  # Değil
 ]
+
 
 class Token:
     def __init__(self, type_, value=None, pos_start=None, pos_end=None):
@@ -185,7 +190,7 @@ class Lexer:
         self.current_char = None
         self.advance()
 
-  # Line içerisinde ilerlemek için bu func. kullanacağız.
+    # Line içerisinde ilerlemek için bu func. kullanacağız.
     def advance(self):
         # else durumuna düştüğümüzde satırın sonun gelmişiz demektir.
         # Girilen text içerisinde, text uzunluğu kadar gezeceğiz.
@@ -363,8 +368,6 @@ class NumberNode:
         return f'{self.tok}'
 
 # VAR Tipi Erişim
-
-
 class VarAccessNode:
     def __init__(self, var_name_tok):
         self.var_name_tok = var_name_tok
@@ -373,8 +376,6 @@ class VarAccessNode:
         self.pos_end = self.var_name_tok.pos_end
 
 # VAR Tipi Atama
-
-
 class VarAssignNode:
     def __init__(self, var_name_tok, value_node):
         self.var_name_tok = var_name_tok
@@ -407,6 +408,16 @@ class UnaryOpNode:
 
     def __repr__(self):
         return f'({self.op_tok}, {self.node})'
+
+
+class IfNode:
+    def __init__(self, cases, else_case):
+        self.cases = cases
+        self.else_case = else_case
+
+        self.pos_start = self.cases[0][0].pos_start
+        self.pos_end = (
+            self.else_case or self.cases[len(self.cases) - 1][0]).pos_end
 
 
 ###################################################
@@ -463,7 +474,69 @@ class Parser:
             ))
         return res
 
-    ###################################
+    def if_expr(self):
+        res = ParseResult()
+        cases = []
+        else_case = None
+
+        if not self.current_tok.matches(TT_KEYWORD, 'IF'):
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                f"IF' Bekleniyor"
+            ))
+
+        res.register_advancement()
+        self.advance()
+
+        condition = res.register(self.expr())
+        if res.error:
+            return res
+
+        if not self.current_tok.matches(TT_KEYWORD, 'THEN'):
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                f"'THEN' Bekleniyor"
+            ))
+
+        res.register_advancement()
+        self.advance()
+
+        expr = res.register(self.expr())
+        if res.error:
+            return res
+        cases.append((condition, expr))
+
+        while self.current_tok.matches(TT_KEYWORD, 'ELIF'):
+            res.register_advancement()
+            self.advance()
+
+            condition = res.register(self.expr())
+            if res.error:
+                return res
+
+            if not self.current_tok.matches(TT_KEYWORD, 'THEN'):
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    f"'THEN' Bekleniyor"
+                ))
+
+            res.register_advancement()
+            self.advance()
+
+            expr = res.register(self.expr())
+            if res.error:
+                return res
+            cases.append((condition, expr))
+
+        if self.current_tok.matches(TT_KEYWORD, 'ELSE'):
+            res.register_advancement()
+            self.advance()
+
+            else_case = res.register(self.expr())
+            if res.error:
+                return res
+
+        return res.success(IfNode(cases, else_case))
 
     def atom(self):
         res = ParseResult()
@@ -492,12 +565,18 @@ class Parser:
             else:
                 return res.failure(InvalidSyntaxError(
                     self.current_tok.pos_start, self.current_tok.pos_end,
-                    "Expected ')'"
+                    "')' Bekleniyor"
                 ))
+
+        elif tok.matches(TT_KEYWORD, 'IF'):
+            if_expr = res.register(self.if_expr())
+            if res.error:
+                return res
+            return res.success(if_expr)
 
         return res.failure(InvalidSyntaxError(
             tok.pos_start, tok.pos_end,
-            "Expected int, float, identifier, '+', '-' or '('"
+            "Expected int, float, identifier, '+', '-', '('"
         ))
 
     def power(self):
@@ -580,7 +659,7 @@ class Parser:
             return res.success(VarAssignNode(var_name, expr))
 
         node = res.register(self.bin_op(
-            self.arith_expr, (TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE)))
+            self.comp_expr, ((TT_KEYWORD, 'AND'), (TT_KEYWORD, 'OR'))))
 
         if res.error:
             return res.failure(InvalidSyntaxError(
@@ -728,6 +807,9 @@ class Number:
     def notted(self):
         return Number(1 if self.value == 0 else 0).set_context(self.context), None
 
+    def is_true(self):
+        return self.value != 0
+
     def copy(self):
         copy = Number(self.value)
         copy.set_pos(self.pos_start, self.pos_end)
@@ -870,15 +952,40 @@ class Interpreter:
         else:
             return res.success(number.set_pos(node.pos_start, node.pos_end))
 
+    def visit_IfNode(self, node, context):
+        res = RTResult()
+
+        for condition, expr in node.cases:
+            condition_value = res.register(self.visit(condition, context))
+            if res.error:
+                return res
+
+            if condition_value.is_true():
+                expr_value = res.register(self.visit(expr, context))
+                if res.error:
+                    return res
+                return res.success(expr_value)
+
+        if node.else_case:
+            else_value = res.register(self.visit(node.else_case, context))
+            if res.error:
+                return res
+            return res.success(else_value)
+
+        return res.success(None)
 
 ###################################################
 ################# Ç A L I Ş T I R #################
 ###################################################
 
+
 global_symbol_table = SymbolTable()
 global_symbol_table.set("NULL", Number(0))
-global_symbol_table.set("FALSE", Number(0)) # Kontrol durumu 0 dönüyorsa False yazdır
-global_symbol_table.set("TRUE", Number(1))  # Kontrol durumu 1 dönüyorsa True yazdır
+# Kontrol durumu 0 dönüyorsa False yazdır
+global_symbol_table.set("FALSE", Number(0))
+# Kontrol durumu 1 dönüyorsa True yazdır
+global_symbol_table.set("TRUE", Number(1))
+
 
 def run(fn, text):
     # Tokenlerı Üretelim
