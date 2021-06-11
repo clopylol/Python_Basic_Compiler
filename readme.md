@@ -2,8 +2,6 @@
 
 Youtube Test Videosu: https://youtu.be/5KDWYRUuCpY
 
-GitHub Linki: https://github.com/clopylol/Python_Basic_Compiler
-
 Değişken Tanımlama
     VAR x = 5
     VAR x = 5.5
@@ -24,6 +22,7 @@ Eşitlik Kontrolü:
     5 == 5 ... True
 
 İf Kullanımı: 
+
     IF 5 < 10 THEN 123
 
 For Kullanımı: 
@@ -37,6 +36,7 @@ For Kullanımı:
     result2
 
 While Kullanımı:
+
     VAR i = 0
     WHILE i <= 17 THEN VAR i = i+1
     i
