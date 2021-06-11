@@ -1,9 +1,7 @@
 import string
 from string_with_arrows import *
 
-###################################################
 ################# S A B İ T L E R #################
-###################################################
 
 # Rakamlar
 DIGITS = '0123456789'
@@ -12,10 +10,7 @@ DIGITS = '0123456789'
 LETTERS = string.ascii_letters
 LETTERS_DIGITS = LETTERS + DIGITS
 
-###################################################
 ################# H A T A L A R ###################
-###################################################
-
 
 class Error:
     def __init__(self, pos_start, pos_end, error_name, details):
@@ -74,10 +69,7 @@ class RTError(Error):
         return 'Traceback (most recent call last):\n' + result
 
 
-###################################################
 ################# P O S I Z Y O N #################
-# Convert = idx, ln, col
-
 
 class Position:
     def __init__(self, idx, ln, col, fn, ftxt):
@@ -103,9 +95,7 @@ class Position:
         return Position(self.idx, self.ln, self.col, self.fn, self.ftxt)
 
 
-###################################################
 ################# T O K E N L A R #################
-###################################################
 
 # Değişken Tipi
 TT_INT = 'TT_INT'  # int tipi
@@ -151,12 +141,11 @@ KEYWORDS = [
     'THEN',  # Öyleyse
     'ELIF',  # Değil ise
     'ELSE',  # Değil
-    'FOR',
-    'TO',
-    'STEP',
-    'WHILE'
+    'FOR', # For Döngüsü
+    'TO', # Döngü Buraya Kadar
+    'STEP', # Artış veya Azalış Miktarı
+    'WHILE' # While Döngüsü
 ]
-
 
 class Token:
     def __init__(self, type_, value=None, pos_start=None, pos_end=None):
@@ -356,10 +345,7 @@ class Lexer:
 
         return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
 
-#######################################
-# NODES
-#######################################
-
+################### NODES ####################
 
 class NumberNode:
     def __init__(self, tok):
@@ -372,8 +358,6 @@ class NumberNode:
         return f'{self.tok}'
 
 # VAR Tipi Erişim
-
-
 class VarAccessNode:
     def __init__(self, var_name_tok):
         self.var_name_tok = var_name_tok
@@ -382,8 +366,6 @@ class VarAccessNode:
         self.pos_end = self.var_name_tok.pos_end
 
 # VAR Tipi Atama
-
-
 class VarAssignNode:
     def __init__(self, var_name_tok, value_node):
         self.var_name_tok = var_name_tok
@@ -405,7 +387,6 @@ class BinOpNode:
     def __repr__(self):
         return f'({self.left_node}, {self.op_tok}, {self.right_node})'
 
-
 class UnaryOpNode:
     def __init__(self, op_tok, node):
         self.op_tok = op_tok
@@ -418,8 +399,6 @@ class UnaryOpNode:
         return f'({self.op_tok}, {self.node})'
 
 # If Durumu İçin
-
-
 class IfNode:
     def __init__(self, cases, else_case):
         self.cases = cases
@@ -430,8 +409,6 @@ class IfNode:
             self.else_case or self.cases[len(self.cases) - 1][0]).pos_end
 
 # For Döngüsü İçin
-
-
 class ForNode:
     def __init__(self, var_name_tok, start_value_node, end_value_node, step_value_node, body_node):
         self.var_name_tok = var_name_tok
@@ -444,8 +421,6 @@ class ForNode:
         self.pos_end = self.body_node.pos_end
 
 # While Döngüsü İç,m
-
-
 class WhileNode:
     def __init__(self, condition_node, body_node):
         self.condition_node = condition_node
@@ -454,10 +429,8 @@ class WhileNode:
         self.pos_start = self.condition_node.pos_start
         self.pos_end = self.body_node.pos_end
 
-###################################################
-#################### P A R S E R ##################
-###################################################
 
+#################### P A R S E R ##################
 
 class ParseResult:
     def __init__(self):
@@ -483,11 +456,6 @@ class ParseResult:
             self.error = error
         return self
 
-
-#######################################
-# PARSER
-#######################################
-
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
@@ -505,7 +473,7 @@ class Parser:
         if not res.error and self.current_tok.type != TT_EOF:
             return res.failure(InvalidSyntaxError(
                 self.current_tok.pos_start, self.current_tok.pos_end,
-                "Expected '+', '-', '*', '/' or '^'"
+                "Beklenen '+', '-', '*', '/' or '^'"
             ))
         return res
 
@@ -727,7 +695,7 @@ class Parser:
 
         return res.failure(InvalidSyntaxError(
             tok.pos_start, tok.pos_end,
-            "Expected int, float, identifier, '+', '-', '('"
+            "Beklenenler int, float, identifier, '+', '-', '('"
         ))
 
     def power(self):
@@ -842,10 +810,7 @@ class Parser:
 
         return res.success(left)
 
-#######################################
-# RUNTIME RESULT
-#######################################
-
+################### Sonuçlar ####################
 
 class RTResult:
     def __init__(self):
@@ -865,10 +830,7 @@ class RTResult:
         self.error = error
         return self
 
-
-#######################################
-# VALUES
-#######################################
+################# Değerler ######################
 
 class Number:
     def __init__(self, value):
@@ -971,9 +933,7 @@ class Number:
         return str(self.value)
 
 
-#######################################
-# CONTEXT
-#######################################
+################## CONTEXT #####################
 
 class Context:
     def __init__(self, display_name, parent=None, parent_entry_pos=None):
@@ -1000,10 +960,8 @@ class SymbolTable:
     def remove(self, name):
         del self.symbols[name]
 
-########################################################
-################# Y O R U M L A Y I C I ################
-########################################################
 
+################# Y O R U M L A Y I C I ################
 
 class Interpreter:
     def visit(self, node, context):
@@ -1166,9 +1124,8 @@ class Interpreter:
                 return res
         return res.success(None)
     
-###################################################
+
 ################# Ç A L I Ş T I R #################
-###################################################
 
 global_symbol_table = SymbolTable()
 global_symbol_table.set("NULL", Number(0))
