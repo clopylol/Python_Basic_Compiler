@@ -1,13 +1,18 @@
 170508017 - Buğra Berkay Ertuğrul
 
-Youtube Test Videosu: https://youtu.be/5KDWYRUuCpY
+Youtube Test Videosu: **[Video]**
 
 Değişken Tanımlama
+
     VAR x = 5
     VAR x = 5.5
 
 Matematiksel İşlemler
-    5 + 5 ... 10
+
+    5 * 2... 10
+    100 - 29  ... 71
+    38 / 2 ... 19
+    15 + 8 ...23
 
     VAR a = 5
     VAR b = 3
@@ -40,3 +45,6 @@ While Kullanımı:
     VAR i = 0
     WHILE i <= 17 THEN VAR i = i+1
     i
+
+
+[Video]: <https://youtu.be/5KDWYRUuCpY>
