@@ -7,6 +7,11 @@ from string_with_arrows import *
 # Rakamlar
 DIGITS = '0123456789'
 
+# Harfler 
+import string
+LETTERS = string.ascii_letters
+LETTERS_DIGITS = LETTERS + DIGITS
+
 ###################################################
 ################# H A T A L A R ###################
 ###################################################
@@ -101,11 +106,21 @@ class Position:
 TT_INT = 'TT_INT'  # int tipi
 TT_FLOAT = 'FLOAT'  # float tipi
 
+# Değişkenler
+# Keyword, identifier (ikisi mecbur) vede equlas kullanabiliriz.
+# var isim = <expr>   Örnek olarak verilebilir.
+TT_IDENTIFIER = 'IDENTIFIER'
+TT_KEYWORD = 'KEYWORD'
+
 # Operatörler
 TT_PLUS = 'PLUS'  # Toplama (+)
 TT_MINUS = 'MINUS'  # Çıkarma (-)
 TT_DIV = 'DIV'  # Bölme (/)
 TT_MUL = 'MUL'  # Çarpma  (*)
+TT_EQ = 'EQ'  # Eşittir (=)
+
+# Kuvvet Operatörü (^)  Örn: 2^4 = 16
+TT_POW = 'POW'
 
 # Özel Semboller
 TT_LPAREN = 'LPAREN'  # Sol Parantez (
@@ -165,6 +180,8 @@ class Lexer:
                 self.advance()
             elif self.current_char in DIGITS:
                 tokens.append(self.make_number())
+            elif self.current_char in LETTERS:
+                tokens.append(self.make_identifier())
 
             # Okunan karakter + ise bunu TT_PLUS tokeni olarak tutcağız.
             elif self.current_char == '+':
@@ -183,9 +200,17 @@ class Lexer:
             elif self.current_char == '/':
                 tokens.append(Token(TT_DIV, pos_start=self.pos))
                 self.advance()
+                # Üs (Kuvvet) İşlemi
+            elif self.current_char == '^':
+                tokens.append(Token(TT_POW, pos_start=self.pos))
+                self.advance()
+                # Eşittir
+            elif self.current_char == '=':
+                tokens.append(Token(TT_DIV, pos_start=self.pos))
+                self.advance()
             # Sol Parantez
             elif self.current_char == '(':
-                tokens.append(Token(TT_LPAREN, pos_start=self.pos))
+                tokens.append(Token(TT_EQ, pos_start=self.pos))
                 self.advance()
             # Sağ Parantez
             elif self.current_char == ')':
@@ -313,69 +338,126 @@ class Parser:
 
     def parse(self):
         res = self.expr()
-
-        # Hata yoksa ve Satır Sonu Değilse
         if not res.error and self.current_tok.type != TT_EOF:
             return res.failure(InvalidSyntaxError(
                 self.current_tok.pos_start, self.current_tok.pos_end,
-                "Hata: '+', '-', '*', veya '/' bekleniyor !"
+                "Expected '+', '-', '*', '/' or '^'"
             ))
         return res
 
     ###################################
+
+    def atom(self):
+        res = ParseResult()
+        tok = self.current_tok
+
+        if tok.type in (TT_INT, TT_FLOAT):
+            res.register_advancement()
+            self.advance()
+            return res.success(NumberNode(tok))
+
+        elif tok.type == TT_IDENTIFIER:
+            res.register_advancement()
+            self.advance()
+            return res.success(VarAccessNode(tok))
+
+        elif tok.type == TT_LPAREN:
+            res.register_advancement()
+            self.advance()
+            expr = res.register(self.expr())
+            if res.error:
+                return res
+            if self.current_tok.type == TT_RPAREN:
+                res.register_advancement()
+                self.advance()
+                return res.success(expr)
+            else:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected ')'"
+                ))
+
+        return res.failure(InvalidSyntaxError(
+            tok.pos_start, tok.pos_end,
+            "Expected int, float, identifier, '+', '-' or '('"
+        ))
+
+    def power(self):
+        return self.bin_op(self.atom, (TT_POW, ), self.factor)
 
     def factor(self):
         res = ParseResult()
         tok = self.current_tok
 
         if tok.type in (TT_PLUS, TT_MINUS):
-            res.register(self.advance())
+            res.register_advancement()
+            self.advance()
             factor = res.register(self.factor())
             if res.error:
                 return res
             return res.success(UnaryOpNode(tok, factor))
 
-        elif tok.type in (TT_INT, TT_FLOAT):
-            res.register(self.advance())
-            return res.success(NumberNode(tok))
-
-        elif tok.type == TT_LPAREN:
-            res.register(self.advance())
-            expr = res.register(self.expr())
-            if res.error:
-                return res
-            if self.current_tok.type == TT_RPAREN:
-                res.register(self.advance())
-                return res.success(expr)
-            else:
-                return res.failure(InvalidSyntaxError(
-                    self.current_tok.pos_start, self.current_tok.pos_end,
-                    "Sağ Parantez Bulunamadı: )"
-                ))
-
-        return res.failure(InvalidSyntaxError(
-            tok.pos_start, tok.pos_end,
-            'Float veya Int Bekleniyor !'
-        ))
+        return self.power()
 
     def term(self):
         return self.bin_op(self.factor, (TT_MUL, TT_DIV))
 
     def expr(self):
-        return self.bin_op(self.term, (TT_PLUS, TT_MINUS))
+        res = ParseResult()
+
+        if self.current_tok.matches(TT_KEYWORD, 'VAR'):
+            res.register_advancement()
+            self.advance()
+
+            if self.current_tok.type != TT_IDENTIFIER:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected identifier"
+                ))
+
+            var_name = self.current_tok
+            res.register_advancement()
+            self.advance()
+
+            if self.current_tok.type != TT_EQ:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected '='"
+                ))
+
+            res.register_advancement()
+            self.advance()
+            expr = res.register(self.expr())
+            if res.error:
+                return res
+            return res.success(VarAssignNode(var_name, expr))
+
+        node = res.register(self.bin_op(self.term, (TT_PLUS, TT_MINUS)))
+
+        if res.error:
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                "Expected 'VAR', int, float, identifier, '+', '-' or '('"
+            ))
+
+        return res.success(node)
 
     ###################################
 
-    def bin_op(self, func, ops):
+    def bin_op(self, func_a, ops, func_b=None):
+        if func_b == None:
+            func_b = func_a
+
         res = ParseResult()
-        left = res.register(func())
+        left = res.register(func_a())
         if res.error:
             return res
 
         while self.current_tok.type in ops:
             op_tok = self.current_tok
-            res.register(self.advance())
-            right = res.register(func())
+            res.register_advancement()
+            self.advance()
+            right = res.register(func_b())
             if res.error:
                 return res
             left = BinOpNode(left, op_tok, right)
@@ -437,6 +519,7 @@ class Number:
         if isinstance(other, Number):
             return Number(self.value * other.value).set_context(self.context), None
 
+    # Bölünme Durumu
     def dived_by(self, other):
         if isinstance(other, Number):
             if other.value == 0:
@@ -448,13 +531,24 @@ class Number:
 
             return Number(self.value / other.value).set_context(self.context), None
 
+    # Üs (Kuvvet Alma)
+    def powed_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value ** other.value).set_context(self.context), None
+
+    def copy(self):
+        copy = Number(self.value)
+        copy.set_pos(self.pos_start, self.pos_end)
+        copy.set_context(self.context)
+        return copy
+
     def __repr__(self):
         return str(self.value)
+
 
 #######################################
 # CONTEXT
 #######################################
-
 
 class Context:
     def __init__(self, display_name, parent=None, parent_entry_pos=None):
@@ -466,6 +560,7 @@ class Context:
 ################# Y O R U M L A Y I C I ################
 ########################################################
 
+
 class Interpreter:
     def visit(self, node, context):
         method_name = f'visit_{type(node).__name__}'
@@ -474,8 +569,6 @@ class Interpreter:
 
     def no_visit_method(self, node, context):
         raise Exception(f'No visit_{type(node).__name__} method defined')
-
-    ###################################
 
     def visit_NumberNode(self, node, context):
         return RTResult().success(
@@ -500,6 +593,8 @@ class Interpreter:
             result, error = left.multed_by(right)
         elif node.op_tok.type == TT_DIV:
             result, error = left.dived_by(right)
+        elif node.op_tok.type == TT_POW:
+            result, error = left.powed_by(right)
 
         if error:
             return res.failure(error)
