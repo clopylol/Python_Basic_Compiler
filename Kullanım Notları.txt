@@ -1,4 +1,10 @@
-Değiken Tanımlama
+170508017 - Buğra Berkay Ertuğrul
+
+Youtube Test Videosu: https://youtu.be/5KDWYRUuCpY
+
+GitHub Linki: https://github.com/clopylol/Python_Basic_Compiler
+
+Değişken Tanımlama
     VAR x = 5
     VAR x = 5.5
 
