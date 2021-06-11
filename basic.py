@@ -38,6 +38,11 @@ class IllegalCharError(Error):
         super().__init__(pos_start, pos_end, 'Geçersiz Karakter', details)
 
 
+class ExpectedCharError(Error):
+    def __init__(self, pos_start, pos_end, details):
+        super().__init__(pos_start, pos_end, 'Expected Character', details)
+
+
 class InvalidSyntaxError(Error):
     def __init__(self, pos_start, pos_end, details=''):
         super().__init__(pos_start, pos_end, 'Geçesiz Syntax', details)
@@ -129,12 +134,20 @@ TT_RPAREN = 'RPAREN'  # Sağ Parantez )
 # Satır Sonu (end of line)
 TT_EOF = "EOF"
 
-# Keywords
+TT_EE = 'EE'  # Eşittir
+TT_NE = 'NE'  # Eşitr Değildir
+TT_LT = 'LT'  # Küçüktür
+TT_GT = 'GT'  # Büyüktür
+TT_LTE = 'LTE'  # Küçük Eşittir
+TT_GTE = 'GTE'  # Büyük Eşittir
 
+# Keywords
 KEYWORDS = [
     'VAR'
+    'AND',  # Ve
+    'OR',  # Veya
+    'NOT'  # Değil
 ]
-
 
 class Token:
     def __init__(self, type_, value=None, pos_start=None, pos_end=None):
@@ -224,7 +237,21 @@ class Lexer:
             elif self.current_char == ')':
                 tokens.append(Token(TT_RPAREN, pos_start=self.pos))
                 self.advance()
-
+            # Değil Eşit
+            elif self.current_char == '!':
+                token, error = self.make_not_equals()
+                if error:
+                    return [], error
+                tokens.append(token)
+            # Eşit mi ?
+            elif self.current_char == '=':
+                tokens.append(self.make_equals())
+            # Küçüktür
+            elif self.current_char == '<':
+                tokens.append(self.make_less_than())
+            # Büyüktür
+            elif self.current_char == '>':
+                tokens.append(self.make_greater_than())
             # Eğer tanımlı olan karakterlerden hiç biri gelmediyse hata dönmemiz gerekiyor.
             else:
                 pos_start = self.pos.copy()
@@ -272,10 +299,58 @@ class Lexer:
         tok_type = TT_KEYWORD if id_str in KEYWORDS else TT_IDENTIFIER
         return Token(tok_type, id_str, pos_start, self.pos)
 
+    # Eşit değil mi kontrolü (!)
+    def make_not_equals(self):
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == '=':
+            self.advance()
+            return Token(TT_NE, pos_start=pos_start, pos_end=self.pos), None
+
+        self.advance()
+        return None, ExpectedCharError(pos_start, self.pos, "'=' (sonra '!')")
+
+    # Eşit mi kontrolü (=)
+    def make_equals(self):
+        tok_type = TT_EQ
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == '=':
+            self.advance()
+            tok_type = TT_EE
+
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+    # Küçük mü kontrolü
+    def make_less_than(self):
+        tok_type = TT_LT
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == '=':
+            self.advance()
+            tok_type = TT_LTE
+
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
+
+    # Büyük mü kontrolü
+    def make_greater_than(self):
+        tok_type = TT_GT
+        pos_start = self.pos.copy()
+        self.advance()
+
+        if self.current_char == '=':
+            self.advance()
+            tok_type = TT_GTE
+
+        return Token(tok_type, pos_start=pos_start, pos_end=self.pos)
 
 #######################################
 # NODES
 #######################################
+
 
 class NumberNode:
     def __init__(self, tok):
@@ -445,6 +520,35 @@ class Parser:
     def term(self):
         return self.bin_op(self.factor, (TT_MUL, TT_DIV))
 
+    # Aritmetik İfade (Matematik İşlemleri)
+    def arith_expr(self):
+        return self.bin_op(self.term, (TT_PLUS, TT_MINUS))
+
+    # Eşitlkik Kontrol İfadeleri ( ==, <=, vb.)
+    def comp_expr(self):
+        res = ParseResult()
+
+        if self.current_tok.matches(TT_KEYWORD, 'NOT'):
+            op_tok = self.current_tok
+            res.register_advancement()
+            self.advance()
+
+            node = res.register(self.comp_expr())
+            if res.error:
+                return res
+            return res.success(UnaryOpNode(op_tok, node))
+
+        node = res.register(self.bin_op(
+            self.arith_expr, (TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE)))
+
+        if res.error:
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                "Beklenen int, float, tipidedir, '+', '-', '(' veya 'NOT'"
+            ))
+
+        return res.success(node)  # Sonucu Dön
+
     def expr(self):
         res = ParseResult()
 
@@ -475,7 +579,8 @@ class Parser:
                 return res
             return res.success(VarAssignNode(var_name, expr))
 
-        node = res.register(self.bin_op(self.term, (TT_PLUS, TT_MINUS)))
+        node = res.register(self.bin_op(
+            self.arith_expr, (TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE)))
 
         if res.error:
             return res.failure(InvalidSyntaxError(
@@ -578,6 +683,50 @@ class Number:
     def powed_by(self, other):
         if isinstance(other, Number):
             return Number(self.value ** other.value).set_context(self.context), None
+
+    # Eşitlik Durumu
+    def get_comparison_eq(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value == other.value)).set_context(self.context), None
+    # Eşit Değil Durumu (Değil Eşit)
+
+    def get_comparison_ne(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value != other.value)).set_context(self.context), None
+    # Küçüktür Durumu
+
+    def get_comparison_lt(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value < other.value)).set_context(self.context), None
+    # Büyüktür Durumu
+
+    def get_comparison_gt(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value > other.value)).set_context(self.context), None
+    # Küçük Eşittir Durumu
+
+    def get_comparison_lte(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value <= other.value)).set_context(self.context), None
+    # Büyük Eşittir Durumu
+
+    def get_comparison_gte(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value >= other.value)).set_context(self.context), None
+    # VE Durumu
+
+    def anded_by(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value and other.value)).set_context(self.context), None
+    # VEYA Durumu
+
+    def ored_by(self, other):
+        if isinstance(other, Number):
+            return Number(int(self.value or other.value)).set_context(self.context), None
+    # Değil Durumu (not)
+
+    def notted(self):
+        return Number(1 if self.value == 0 else 0).set_context(self.context), None
 
     def copy(self):
         copy = Number(self.value)
@@ -682,7 +831,22 @@ class Interpreter:
             result, error = left.dived_by(right)
         elif node.op_tok.type == TT_POW:
             result, error = left.powed_by(right)
-
+        elif node.op_tok.type == TT_EE:
+            result, error = left.get_comparison_eq(right)
+        elif node.op_tok.type == TT_NE:
+            result, error = left.get_comparison_ne(right)
+        elif node.op_tok.type == TT_LT:
+            result, error = left.get_comparison_lt(right)
+        elif node.op_tok.type == TT_GT:
+            result, error = left.get_comparison_gt(right)
+        elif node.op_tok.type == TT_LTE:
+            result, error = left.get_comparison_lte(right)
+        elif node.op_tok.type == TT_GTE:
+            result, error = left.get_comparison_gte(right)
+        elif node.op_tok.matches(TT_KEYWORD, 'AND'):
+            result, error = left.anded_by(right)
+        elif node.op_tok.matches(TT_KEYWORD, 'OR'):
+            result, error = left.ored_by(right)
         if error:
             return res.failure(error)
         else:
@@ -698,6 +862,8 @@ class Interpreter:
 
         if node.op_tok.type == TT_MINUS:
             number, error = number.multed_by(Number(-1))
+        elif node.op_tok.matches(TT_KEYWORD, 'NOT'):
+            number, error = number.notted()
 
         if error:
             return res.failure(error)
@@ -710,8 +876,9 @@ class Interpreter:
 ###################################################
 
 global_symbol_table = SymbolTable()
-global_symbol_table.set("null", Number(0))
-
+global_symbol_table.set("NULL", Number(0))
+global_symbol_table.set("FALSE", Number(0)) # Kontrol durumu 0 dönüyorsa False yazdır
+global_symbol_table.set("TRUE", Number(1))  # Kontrol durumu 1 dönüyorsa True yazdır
 
 def run(fn, text):
     # Tokenlerı Üretelim
